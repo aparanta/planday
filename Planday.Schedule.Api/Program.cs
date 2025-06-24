@@ -15,6 +15,7 @@ builder.Services.AddSwaggerGen();
 
 builder.Services.AddSingleton<IConnectionStringProvider>(new ConnectionStringProvider(builder.Configuration.GetConnectionString("Database")));
 builder.Services.AddScoped<IGetAllShiftsQuery, GetAllShiftsQuery>();
+builder.Services.AddScoped<IEmployeeQuery, EmployeeQuery>();
 
 var app = builder.Build();
 
