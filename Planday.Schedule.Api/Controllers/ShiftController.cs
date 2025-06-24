@@ -5,6 +5,7 @@ using Planday.Schedule.Infrastructure.Http;
 namespace Planday.Schedule.Api.Controllers
 {
     [ApiController]
+    [ApiVersion("1.0")]
     [Route("[controller]")]
     public class ShiftController : ControllerBase
     {
@@ -23,10 +24,11 @@ namespace Planday.Schedule.Api.Controllers
         }
 
         [HttpGet("{id:long}")]
-        public async Task<ActionResult<(Shift,string)>> GetShiftById(long id)
+        //Should ideally use DTOs for returning data, but for simplicity returning Shift directly
+        public async Task<ActionResult<(Shift, string)>> GetShiftById(long id)
         {
             var shift = await _getAllShiftsQuery.GetShiftbyId(id);
-                                  
+
             if (shift == null)
             {
                 return NotFound();
@@ -35,13 +37,20 @@ namespace Planday.Schedule.Api.Controllers
             // If the shift has an assigned employee, fetch their details
             if (shift.EmployeeId.HasValue)
             {
-                var employee = await _employeeApiClient.GetEmployeeAsync(shift.EmployeeId.Value, "8e0ac353-5ef1-4128-9687-fb9eb8647288");
-               if (employee == null)
+                try
                 {
-                    return NotFound("Employee not found.");
+                    var employee = await _employeeApiClient.GetEmployeeAsync(shift.EmployeeId.Value, "8e0ac353-5ef1-4128-9687-fb9eb8647288");
+                    
+                    // Return the shift along with employee details
+                    return Ok((shift, $"{employee.Name} ({employee.Email})"));
                 }
-                // Return the shift along with employee details
-                return Ok((shift, $"{employee.Name} ({employee.Email})"));
+                // Might be more specific exceptions to catch
+                catch (Exception ex)
+                {
+                    // Log the exception as needed
+                    return StatusCode(500, $"An error occurred while retrieving the employee: {ex.Message}");
+                }                
+               
             }
 
             return Ok(shift);
@@ -50,6 +59,8 @@ namespace Planday.Schedule.Api.Controllers
         [HttpPost]
         public async Task<ActionResult<Shift>> CreateShift([FromBody] Shift input)
         {
+            //For simplicity validation is being done here
+            // In a real-world scenario, you would likely use a validation library or framework.
             if (input.Start > input.End)
             {
                 return BadRequest("Start time must not be greater than end time.");
@@ -77,6 +88,8 @@ namespace Planday.Schedule.Api.Controllers
         [HttpPut("{shiftId:long}/assign/{employeeId:long}")]
         public async Task<ActionResult<Shift>> AssignShiftToEmployee(long shiftId, long employeeId)
         {
+            // For simplicity validation is being done here
+            // In a real-world scenario, you would likely use a validation library or framework.
             // Check if shift exists
             var shift = await _getAllShiftsQuery.GetShiftbyId(shiftId);
             if (shift == null)
@@ -92,10 +105,12 @@ namespace Planday.Schedule.Api.Controllers
                 return BadRequest("This shift is already assigned to an employee.");
 
             // Check for overlapping shifts
+            //Maybe add filter for date to limit shifts retrieved
             var employeeShifts = await _getAllShiftsQuery.GetShiftsByEmployeeIdAsync(employeeId);
-            //TODO: Handle null case for employeeShifts
+            // TODO: Overlap logic
             bool overlaps = employeeShifts.Any(s =>
-                ((shift.Start < s.End) && (shift.End > s.Start))
+                (s.Start < shift.Start) && (shift.Start < s.End)
+                || (s.Start < shift.End) && (shift.End < s.End)
             );
 
             if (overlaps)
@@ -103,7 +118,7 @@ namespace Planday.Schedule.Api.Controllers
 
             // Assign shift
             await _getAllShiftsQuery.AssignEmployeeToShiftAsync(shiftId, employeeId);
-            
+
             return Ok();
         }
     }
