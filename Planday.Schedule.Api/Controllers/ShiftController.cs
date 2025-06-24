@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Planday.Schedule.Queries;
+using Planday.Schedule.Infrastructure.Http;
 
 namespace Planday.Schedule.Api.Controllers
 {
@@ -9,21 +10,38 @@ namespace Planday.Schedule.Api.Controllers
     {
         private readonly IGetAllShiftsQuery _getAllShiftsQuery;
         private readonly IEmployeeQuery _employeeQuery;
+        private readonly IEmployeeApiClient _employeeApiClient;
 
-        public ShiftController(IGetAllShiftsQuery getAllShiftsQuery, IEmployeeQuery employeeQuery)
+        public ShiftController(
+            IGetAllShiftsQuery getAllShiftsQuery,
+            IEmployeeQuery employeeQuery,
+            IEmployeeApiClient employeeApiClient)
         {
             _getAllShiftsQuery = getAllShiftsQuery;
             _employeeQuery = employeeQuery;
+            _employeeApiClient = employeeApiClient;
         }
 
         [HttpGet("{id:long}")]
-        public async Task<ActionResult<Shift>> GetShiftById(long id)
+        public async Task<ActionResult<(Shift,string)>> GetShiftById(long id)
         {
             var shift = await _getAllShiftsQuery.GetShiftbyId(id);
-
+                                  
             if (shift == null)
             {
                 return NotFound();
+            }
+
+            // If the shift has an assigned employee, fetch their details
+            if (shift.EmployeeId.HasValue)
+            {
+                var employee = await _employeeApiClient.GetEmployeeAsync(shift.EmployeeId.Value, "8e0ac353-5ef1-4128-9687-fb9eb8647288");
+               if (employee == null)
+                {
+                    return NotFound("Employee not found.");
+                }
+                // Return the shift along with employee details
+                return Ok((shift, $"{employee.Name} ({employee.Email})"));
             }
 
             return Ok(shift);
